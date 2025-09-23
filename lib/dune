@@ -1,0 +1,12 @@
+(library
+ (wrapped false)
+ (name ppx_regexp_lib)
+ (public_name ppx_mikmatch.lib)
+ (modules regexp regexp_types mik_parser mik_lexer)
+ (libraries ppxlib re re.perl))
+
+(menhir
+ (modules mik_parser))
+
+(ocamllex
+ (modules mik_lexer))

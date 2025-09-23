@@ -1,0 +1,13 @@
+break-infix-before-func=false
+break-infix=fit-or-vertical
+cases-exp-indent=2
+doc-comments=before
+exp-grouping=preserve
+leading-nested-match-parens=true
+let-and=sparse
+m=140
+max-indent=2
+parens-ite=true
+parens-tuple=multi-line-only
+parse-docstrings=false
+type-decl=sparse

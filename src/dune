@@ -1,0 +1,8 @@
+(library
+  (name ppx_mikmatch)
+  (public_name ppx_mikmatch)
+  (kind ppx_rewriter)
+  (modules util transformations ppx_regexp)
+  (preprocess (pps ppxlib.metaquot))
+  (libraries ppx_regexp_lib ppxlib re re.perl)
+  (ppx_runtime_libraries re re.perl))
