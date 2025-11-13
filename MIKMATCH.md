@@ -43,13 +43,16 @@ The grammar accepted by this extensions is the following
                | "(" <pattern> ")"
                | "(" IDENT ")"
                | "(" IDENT "as" IDENT ")"
-               | "(" IDENT "as" IDENT ":" "int" ")"
-               | "(" IDENT "as" IDENT ":" "float" ")"
+               | "(" IDENT "as" IDENT ":" <type_name> ")"
                | "(" IDENT "as" IDENT ":=" <func_name> ")"
                | "(" <pattern> "as" IDENT ")"
-               | "(" <pattern> "as" IDENT ":" "int" ")"
-               | "(" <pattern> "as" IDENT ":" "float" ")"
+               | "(" <pattern> "as" IDENT ":" <type_name> ")"
                | "(" <pattern> "as" IDENT ":=" <func_name> ")"
+               | "(" <pattern> "as" IDENT ":=" <func_name> ":" <type_name> ")"
+
+<type_name> ::= "int"
+              | "float"
+              | IDENT # other arbitrary types not built-in, requires parse function
 
 <func_name> ::= IDENT
               | MOD_IDENT # qualified names
