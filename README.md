@@ -23,9 +23,9 @@ let%mikmatch var = {| some regex |}
 ```
 to define reusable patterns, and much more.
 
-### Full giude
+### Full usage guide
 
-Full [%mikmatch guide](./MIKMATCH.md).
+[ppx_mikmatch guide](./MIKMATCH.md).
 
 #### Quick Links
 - [Variable capture](./MIK.md#variable-capture)
@@ -134,7 +134,7 @@ let pp_mode fmt mode = Format.fprintf fmt @@ match mode with `A -> "a" | `B -> "
 
 let%mikmatch date_format = {| digit{4} '-' digit{2} '-' digit{2} ' ' digit{2} ':' digit{2} ':' digit{2} |}
 
-type log = {%mikmatch| 
+type log = {%mikmatch|
   (date_format as date)
   " [" (upper+ as level) "]"
   ((" pid=" (digit+ as pid : int))? | (" name=" ([a-z]+ as name))?)
@@ -164,32 +164,80 @@ The pretty-printer detects which alternation branch to use based on field popula
 - If the type is provided without a conversion function, then it is assumed that in the scope there are associated `parse` and `pp` functions.
   This guarantees compositionality with other types defined with this extension
 
-### Example
+## Performance Considerations
 
-The following prints out times and hosts for SMTP connections to the Postfix daemon:
+The different syntax extensions behave differently:
+  - `match%mikmatch` will compile all branches into suitable groups.
+    The group creation follows the invariant:
 
-#### `%mikmatch`
+    If the regexes in the current group:
+    1. do not have pattern guards, then if the current regex:
+        1. is pattern guardless as well, it can belong to the same group
+        2. has a pattern guard, it starts a new group
+    2. have pattern guards, then if the current regex
+        1. has the same RE and flags, it can belong to the same group
+        2. doesn't have the same RE and flags, then start new group
+
+    Each group is compiled as a single Regex using alternations and tried against the input string.
+
+  - the general extension defined [here](MIKMATCH.md#general-matchfunction) compiles each branch into a separate Regex, so it is less efficient than the first option.
+
+When compared to `mikmatch` or `Re2` using `Match.get_exn`, `ppx_mikmatch` is considerably faster, as the other tools take the same approach as the general extension.
+
+A comparison:
 ```ocaml
-(* Link with re, re.pcre, lwt, lwt.unix.
-   Preprocess with ppx_regexp_extended.
-   Adjust to your OS. *)
-
-open Lwt.Infix
-
-let%mikmatch host = {| [a-z0-9.-]+ |}
-
-let check_line =
-  (function%mikmatch
-   | {|/ (any* ':' digit digit as t) ' ' (any*) ' ' "postfix/smtpd" '[' digit+ ']' ": connect from " (host) /|} ->
-      Lwt_io.printlf "%s %s" t host
-   | _ ->
-      Lwt.return_unit)
-
-let () = Lwt_main.run begin
-  Lwt_io.printl "SMTP connections from:" >>= fun () ->
-  Lwt_stream.iter_s check_line (Lwt_io.lines_of_file "/var/log/syslog")
+(* the REs used here are direct equivalents to the branches in the mikmatchlike functions below *)
+let extract_httpheader_re2 s =
+  match Re2.first_match content_encoding_re s with
+  | Ok mtch ->
+    let v = Re2.Match.get_exn ~sub:(`Index 1) mtch in
+    `ContentEncoding (String.lowercase_ascii @@ strip v)
+  | Error _ ->
+  ...
+  match Re2.first_match link_re s with
+  | Ok mtch ->
+    let url = Re2.Match.get_exn ~sub:(`Index 1) mtch in
+    let rest = Re2.Match.get_exn ~sub:(`Index 2) mtch in
+    `Link (url, String.lowercase_ascii @@ strip rest)
+  | Error _ -> `Other
 end
+
+let extract_httpheader_mikmatch s =
+  match s with
+  | / "content-encoding:"~ ' '* (_* as v) "\r\n"? eos / -> `ContentEncoding (String.lowercase_ascii @@ strip v)
+  | / "content-type:"~ ' '* (_* as v) "\r\n"? eos / -> `ContentType (String.lowercase_ascii @@ strip v)
+  | / "last-modified:"~ ' '* (_* as v) "\r\n"? eos / -> `LastModified (strip v)
+  | / "content-length:"~ ' '* (_* as v) "\r\n"? eos / -> `ContentLength (strip v)
+  | / "etag:"~ ' '* (_* as v) "\r\n"? eos / -> `ETag (strip v)
+  | / "server:"~ ' '* (_* as v) "\r\n"? eos / -> `Server (strip v)
+  | / "x-robots-tag:"~ ' '* (_* as v) "\r\n"? eos / -> `XRobotsTag (strip v)
+  | / "location:"~ ' '* (_* as v) "\r\n"? eos / -> `Location (strip v)
+  | / "link:"~ ' '* '<' (re_link_url as url) '>' ' '* ';' (_* as rest) "\r\n"? eos / -> `Link (url, String.lowercase_ascii @@ strip rest)
+  | _ -> "Other"
+
+let extract_httpheader_ppx_mikmatch s =
+  match%mikmatch s with
+  | {| "content-encoding:"~ ' '* (_* as v := String.strip) "\r\n"? |} -> `ContentEncoding (String.lowercase_ascii v)
+  | {| "content-type:"~ ' '* (_* as v := String.strip) "\r\n"? |} -> `ContentType (String.lowercase_ascii v)
+  | {| "last-modified:"~ ' '* (_* as v := String.strip) "\r\n"? |} -> `LastModified v
+  | {| "content-length:"~ ' '* (_* as v := String.strip) "\r\n"? |} -> `ContentLength v
+  | {| "etag:"~ ' '* (_* as v := String.strip) "\r\n"? |} -> `ETag v
+  | {| "server:"~ ' '* (_* as v := String.strip) "\r\n"? |} -> `Server v
+  | {| "x-robots-tag:"~ ' '* (_* as v := String.strip) "\r\n"? |} -> `XRobotsTag v
+  | {| "location:"~ ' '* (_* as v := String.strip) "\r\n"? |} -> `Location v
+  | {| "link:"~ ' '* '<' (re_link_url as url) '>' ' '* ';' (_* as rest := String.strip) "\r\n"? |} ->
+    `Link (url, String.lowercase_ascii rest)
+  | _ -> "Other"
 ```
+
+Benchmarking these three yields:
+```bash
+run_bench 3 cases (count 10000)
+         re2 : allocated    496.4MB, heap         0B, collection 0 0 248, elapsed 1.01 seconds, 9887.97/sec : ok
+    mikmatch : allocated    147.9MB, heap         0B, collection 0 0 73, elapsed 0.2817 seconds, 35504.18/sec : ok
+ppx_mikmatch : allocated    155.5MB, heap         0B, collection 0 0 77, elapsed 0.0669 seconds, 149445.91/sec : ok
+```
+
 
 ## Limitations
 
