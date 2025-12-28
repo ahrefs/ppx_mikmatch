@@ -335,7 +335,7 @@ let transform_destructuring_let ~loc pattern_str expr =
     |> Regexp.check_alternation_captures ~loc r
   in
 
-  { pvb_pat = lhs_pattern; pvb_expr = rhs_expr; pvb_attributes = []; pvb_loc = loc }, [ re_binding ]
+  { pvb_pat = lhs_pattern; pvb_expr = rhs_expr; pvb_constraint = None; pvb_attributes = []; pvb_loc = loc }, [ re_binding ]
 
 let transform_cases ~loc cases =
   let target = `Match in
@@ -502,7 +502,7 @@ let transform_mixed_match ~loc ?matched_expr cases acc =
   let prepared_cases = List.map aux cases in
   let has_ext = List.exists (function `Ext _ -> true | _ -> false) prepared_cases in
 
-  if not has_ext then (match matched_expr with None -> pexp_function ~loc cases, acc | Some m -> pexp_match ~loc m cases, acc)
+  if not has_ext then (match matched_expr with None -> pexp_function_cases ~loc cases, acc | Some m -> pexp_match ~loc m cases, acc)
   else begin
     let compilations =
       prepared_cases

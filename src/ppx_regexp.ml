@@ -24,6 +24,7 @@ let make_alias_binding ~loc ~var_name =
   {
     pvb_pat = ppat_var ~loc { txt = var_name; loc };
     pvb_expr = pexp_ident ~loc { txt = Lident var_name; loc };
+    pvb_constraint = None;
     pvb_attributes = [ warning_attr ];
     pvb_loc = loc;
   }
@@ -130,7 +131,7 @@ let transformation =
         let loc = e.pexp_loc in
         begin
           match e.pexp_desc with
-          | Pexp_function cases ->
+          | Pexp_function ([], _, Pfunction_cases (cases, _, _)) ->
             let cases, binding = Transformations.transform_cases ~loc cases in
             [%expr fun _ppx_regexp_v -> [%e cases]], binding @ acc
           | Pexp_match (e, cases) ->
@@ -160,7 +161,7 @@ let transformation =
       (* match smth with | {%mikmatch|some regex|} -> ...*)
       | Pexp_match (matched_expr, cases) when has_ext_case cases ->
         Transformations.transform_mixed_match ~loc:e_ext.pexp_loc ~matched_expr cases acc
-      | Pexp_function cases when has_ext_case cases -> Transformations.transform_mixed_match ~loc:e_ext.pexp_loc cases acc
+      | Pexp_function ([], _, Pfunction_cases (cases, _, _)) when has_ext_case cases -> Transformations.transform_mixed_match ~loc:e_ext.pexp_loc cases acc
       | _ -> e_ext, acc
   end
 
