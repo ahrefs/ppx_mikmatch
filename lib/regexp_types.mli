@@ -1,6 +1,6 @@
+open Ppxlib
 exception PError of Location.t * string
 
-val mkloc : 'a -> Warnings.loc -> 'a Location.loc
 val ( % ) : ('a -> 'b) -> ('c -> 'a) -> 'c -> 'b
 
 type 'a t = 'a node Location.loc

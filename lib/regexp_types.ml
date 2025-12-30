@@ -1,6 +1,6 @@
+open Ppxlib
 exception PError of Location.t * string
 
-let mkloc = Location.mkloc
 let ( % ) f g x = f (g x)
 
 type 'a t = 'a node Location.loc

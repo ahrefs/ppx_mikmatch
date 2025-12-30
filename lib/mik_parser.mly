@@ -3,6 +3,8 @@ open Regexp_types
 
 let nonepsilon = function { Location.txt = Seq []; _ } -> false | _ -> true
 
+let mkloc = Location.mkloc
+
 let simplify_seq ~loc es =
   match List.filter nonepsilon es with
   | [ e ] -> e
