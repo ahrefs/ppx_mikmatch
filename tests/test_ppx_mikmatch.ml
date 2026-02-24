@@ -240,7 +240,7 @@ let%mikmatch octet = {| digit{1-3} |}
 
 let test_complex_patterns _ =
   let parse_email =
-    function%mikmatch {|/ (Test_ppx_regexp_module.username as user) '@' (domain as dom) /|} -> Some (user, dom) | _ -> None
+    function%mikmatch {|/ (Test_ppx_mikmatch_module.username as user) '@' (domain as dom) /|} -> Some (user, dom) | _ -> None
   in
 
   begin
@@ -412,7 +412,7 @@ let test_mixed_matching _ =
 
   assert_equal "got a" (no_default_case "a");
   assert_equal "got b" (no_default_case "b");
-  assert_raises (Failure "File tests/test_ppx_regexp.ml, lines 407-409, characters 24-33: String did not match any mikmatch cases.")
+  assert_raises (Failure "File tests/test_ppx_mikmatch.ml, lines 407-409, characters 24-33: String did not match any mikmatch cases.")
     (fun () -> no_default_case "c")
 
 type mode =
@@ -612,7 +612,7 @@ type alog =
   ':'
   (digit+ as tid : int)?
   ' '
-  '[' ([^':']+ as facility) ':' (Test_ppx_regexp_module.level : Test_ppx_regexp_module.level) ']'
+  '[' ([^':']+ as facility) ':' (Test_ppx_mikmatch_module.level : Test_ppx_mikmatch_module.level) ']'
   ' '
   (
     ([^ ':']+ as msg_part) (": exn " ([^ '[']* as exception_info))?

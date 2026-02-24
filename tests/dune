@@ -1,13 +1,6 @@
-; (test
-;   (name test_regexp)
-;   (modules test_regexp)
-;   (libraries ppx_regexp_lib ppxlib qcheck re re.perl))
-
-; Tests for ppx_regexp
-
 (tests
-  (names test_ppx_regexp test_ppx_regexp_unused)
-  (modules test_ppx_regexp test_ppx_regexp_unused test_ppx_regexp_module)
+  (names test_ppx_mikmatch test_ppx_mikmatch_unused)
+  (modules test_ppx_mikmatch test_ppx_mikmatch_unused test_ppx_mikmatch_module)
   (package ppx_mikmatch)
   (libraries ounit2 re re.perl)
   (preprocess (pps ppx_mikmatch)))

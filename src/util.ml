@@ -19,7 +19,7 @@ let fresh_var =
   let c = ref 0 in
   fun () ->
     incr c;
-    Printf.sprintf "_ppx_regexp_%d" !c
+    Printf.sprintf "_ppx_mikmatch_%d" !c
 
 let rec is_zero p k = match p.[k] with '0' -> is_zero p (k + 1) | '1' .. '9' -> false | _ -> true
 

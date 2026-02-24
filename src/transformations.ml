@@ -250,7 +250,7 @@ let make_default_rhs ~target ~loc = function
                 pc_lhs = ppat_any ~loc;
                 pc_rhs =
                   [%expr
-                    let [%p ppat_var ~loc var] = _ppx_regexp_v in
+                    let [%p ppat_var ~loc var] = _ppx_mikmatch_v in
                     [%e case.pc_rhs]];
               }
             | _ -> case
@@ -260,11 +260,11 @@ let make_default_rhs ~target ~loc = function
     begin
       match transformed with
       | [ { pc_lhs = { ppat_desc = Ppat_any; _ }; pc_guard = None; pc_rhs; _ } ] -> pc_rhs
-      | _ -> pexp_match ~loc [%expr _ppx_regexp_v] transformed
+      | _ -> pexp_match ~loc [%expr _ppx_mikmatch_v] transformed
     end
 
 let build_exec_match ~loc ~re_var ~continue_next ~on_match =
-  [%expr match Re.exec_opt (fst [%e re_var]) _ppx_regexp_v with None -> [%e continue_next] | Some _g -> [%e on_match]]
+  [%expr match Re.exec_opt (fst [%e re_var]) _ppx_mikmatch_v with None -> [%e continue_next] | Some _g -> [%e on_match]]
 
 (* Transformations *)
 
@@ -330,7 +330,7 @@ let transform_destructuring_let ~loc pattern_str expr =
   let re_var = pexp_ident ~loc { txt = Lident re_var; loc } in
   let rhs_expr =
     [%expr
-      let _ppx_regexp_v = [%e expr] in
+      let _ppx_mikmatch_v = [%e expr] in
       [%e build_exec_match ~loc ~re_var ~continue_next:default_rhs ~on_match]]
     |> Regexp.check_alternation_captures ~loc r
   in
@@ -441,7 +441,7 @@ let transform_cases ~loc cases =
     let build_match_cascade () =
       let make_case idx ((var_name, patterns, handlers), original_group) =
         let re_var = pexp_ident ~loc { txt = Lident var_name; loc } in
-        let continue = [%expr __ppx_regexp_try_next ([%e eint ~loc idx] + 1)] in
+        let continue = [%expr __ppx_mikmatch_try_next ([%e eint ~loc idx] + 1)] in
         let has_guards = List.exists (fun (_, _, _, _, _, g, _) -> g <> None) original_group in
         let is_single = match patterns with [ _ ] -> true | _ -> false in
 
@@ -452,7 +452,7 @@ let transform_cases ~loc cases =
           end
           else begin
             let handler_array = handlers |> List.map (fun (name, _) -> pexp_ident ~loc { txt = Lident name; loc }) |> pexp_array ~loc in
-            let dispatch = [%expr __ppx_regexp_dispatch (snd [%e re_var]) [%e handler_array] _g] in
+            let dispatch = [%expr __ppx_mikmatch_dispatch (snd [%e re_var]) [%e handler_array] _g] in
             if has_guards then [%expr match [%e dispatch] with Some result -> result | None -> [%e continue]]
             else [%expr match [%e dispatch] with Some result -> result | None -> assert false]
           end
@@ -468,8 +468,8 @@ let transform_cases ~loc cases =
       let default = case ~lhs:(ppat_any ~loc) ~guard:None ~rhs:default_rhs in
 
       [%expr
-        let rec __ppx_regexp_try_next group_idx = [%e pexp_match ~loc [%expr group_idx] (cases @ [ default ])] in
-        __ppx_regexp_try_next 0]
+        let rec __ppx_mikmatch_try_next group_idx = [%e pexp_match ~loc [%expr group_idx] (cases @ [ default ])] in
+        __ppx_mikmatch_try_next 0]
     in
 
     let cascade = build_match_cascade () in
@@ -545,13 +545,13 @@ let transform_mixed_match ~loc ?matched_expr cases acc =
       | `Ext _ :: rest, _ -> build_ordered_match input_var (case_idx + 1) rest comps
     in
 
-    let match_body = build_ordered_match [%expr _ppx_regexp_v] 0 prepared_cases compilations in
+    let match_body = build_ordered_match [%expr _ppx_mikmatch_v] 0 prepared_cases compilations in
     let match_expr =
       match matched_expr with
-      | None -> [%expr fun _ppx_regexp_v -> [%e match_body]]
+      | None -> [%expr fun _ppx_mikmatch_v -> [%e match_body]]
       | Some m ->
         [%expr
-          let _ppx_regexp_v = [%e m] in
+          let _ppx_mikmatch_v = [%e m] in
           [%e match_body]]
     in
     match_expr, bindings @ acc

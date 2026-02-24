@@ -3,6 +3,7 @@ maintainer: "Leonardo Santos <leomendesantos@gmail.com>"
 authors: [
   "Petter A. Urkedal <paurkedal@gmail.com>"
   "Gabriel Radanne <drupyog@zoho.com>"
+  "Leonardo Santos <leomendesantos@gmail.com>"
 ]
 license: "LGPL-3.0-or-later WITH LGPL-3.0-linking-exception"
 homepage: "https://github.com/ahrefs/ppx_mikmatch"
@@ -14,9 +15,6 @@ depends: [
   "re" {>= "1.7.2"}
   "menhir" {>= "20240715"}
   "qcheck" {with-test}
-]
-conflicts: [
-  "ppx_regexp"
 ]
 build: ["dune" "build" "-p" name "-j" jobs]
 dev-repo: "git+https://github.com/ahrefs/ppx_mikmatch.git"
