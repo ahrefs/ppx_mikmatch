@@ -131,7 +131,7 @@ let get_ip = function%mikmatch
   | _ -> ...
 
 let get_upper_name = function%mikmatch
-  | {|/ ... (['a'-'z'] as name := String.uppercase) ... /|} -> ... (* (name : string) available here *)
+  | {|/ ... (['a'-'z']+ as name := String.uppercase) ... /|} -> ... (* (name : string) available here *)
   | _ -> ...
 ```
 
