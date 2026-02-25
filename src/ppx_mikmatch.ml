@@ -133,11 +133,11 @@ let transformation =
           match e.pexp_desc with
           | Pexp_function ([], _, Pfunction_cases (cases, _, _)) ->
             let cases, binding = Transformations.transform_cases ~loc cases in
-            [%expr fun _ppx_regexp_v -> [%e cases]], binding @ acc
+            [%expr fun _ppx_mikmatch_v -> [%e cases]], binding @ acc
           | Pexp_match (e, cases) ->
             let cases, binding = Transformations.transform_cases ~loc cases in
             ( [%expr
-                let _ppx_regexp_v = [%e e] in
+                let _ppx_mikmatch_v = [%e e] in
                 [%e cases]],
               binding @ acc )
           | Pexp_let (rec_flag, vbs, body) ->
@@ -169,7 +169,7 @@ let dispatch_function_binding ~loc =
   let open Ppxlib in
   let open Ast_builder.Default in
   value_binding ~loc
-    ~pat:(ppat_var ~loc { txt = "__ppx_regexp_dispatch"; loc })
+    ~pat:(ppat_var ~loc { txt = "__ppx_mikmatch_dispatch"; loc })
     ~expr:
       [%expr
         fun marks handlers _g ->
@@ -197,4 +197,4 @@ let impl str =
     [%str open [%m mod_expr]] @ str
   end
 
-let () = Driver.register_transformation ~impl "ppx_regexp"
+let () = Driver.register_transformation ~impl "ppx_mikmatch"
