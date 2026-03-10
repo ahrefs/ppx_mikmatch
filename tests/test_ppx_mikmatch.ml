@@ -74,8 +74,7 @@ type person = {
 let test_piping_feature _ =
   let make_person first last age = { first; last; age } in
 
-  let parse_person =
-    function%mikmatch
+  let parse_person = function%mikmatch
     | {|/ (alpha+ as first) ' ' (alpha+ as last) ',' ' '* (digit+ as age : int) >>> make_person as person /|} -> Some person
     | _ -> None
   in
@@ -95,8 +94,7 @@ let test_piping_feature _ =
 let%mikmatch num = {| digit+ |}
 
 let test_pattern_guards _ =
-  let classify_number =
-    function%mikmatch
+  let classify_number = function%mikmatch
     | {| (num as n : int) |} when n < 10 -> "single digit"
     | {| (num as n : int) |} when n < 100 -> "double digit"
     | {| (num as n : int) |} when n < 1000 -> "triple digit"
@@ -112,8 +110,7 @@ let test_pattern_guards _ =
 
 (* Test compilation order with guards - ensure correct branch is taken *)
 let test_compilation_order _ =
-  let match_order =
-    function%mikmatch
+  let match_order = function%mikmatch
     | {| "test" (digit as d : int) |} when d = 1 -> "first"
     | {| "test" (digit as d : int) |} when d = 2 -> "second"
     | {| "test" digit |} -> "other digit"
@@ -239,23 +236,22 @@ let%mikmatch domain = {| alnum+ ('.' alnum+)+ |}
 let%mikmatch octet = {| digit{1-3} |}
 
 let test_complex_patterns _ =
-  let parse_email =
-    function%mikmatch {|/ (Test_ppx_mikmatch_module.username as user) '@' (domain as dom) /|} -> Some (user, dom) | _ -> None
+  let parse_email = function%mikmatch
+    | {|/ (Test_ppx_mikmatch_module.username as user) '@' (domain as dom) /|} -> Some (user, dom)
+    | _ -> None
   in
 
-  begin
-    match parse_email "john.doe@example.com" with
-    | Some (u, d) ->
-      assert_equal "john.doe" u;
-      assert_equal "example.com" d
-    | None -> assert_failure "Should match email"
+  begin match parse_email "john.doe@example.com" with
+  | Some (u, d) ->
+    assert_equal "john.doe" u;
+    assert_equal "example.com" d
+  | None -> assert_failure "Should match email"
   end;
 
   assert_equal None (parse_email "invalid@");
 
   (* IP address pattern with validation *)
-  let is_valid_ip =
-    function%mikmatch
+  let is_valid_ip = function%mikmatch
     | {|/ (octet as o1 : int) '.' (octet as o2 : int) '.'
           (octet as o3 : int) '.' (octet as o4 : int) /|}
       when o1 <= 255 && o2 <= 255 && o3 <= 255 && o4 <= 255 ->
@@ -412,7 +408,7 @@ let test_mixed_matching _ =
 
   assert_equal "got a" (no_default_case "a");
   assert_equal "got b" (no_default_case "b");
-  assert_raises (Failure "File tests/test_ppx_mikmatch.ml, lines 407-409, characters 24-33: String did not match any mikmatch cases.")
+  assert_raises (Failure "File tests/test_ppx_mikmatch.ml, lines 403-405, characters 24-33: String did not match any mikmatch cases.")
     (fun () -> no_default_case "c")
 
 type mode =
@@ -649,6 +645,49 @@ let test_parse_logfile _ =
   | None -> assert_failure "Should parse logfile"
   | Some t -> assert_equal (Format.asprintf "%a" pp_logfile t) (String.trim logfile)
 
+(* Test mixed matching inside function with preceding parameters.
+   This is a regression test for the bug where {%mikmatch|...|} patterns
+   inside a plain `function` with 1+ preceding parameters were not
+   transformed by the PPX, because the Pexp_function match only accepted
+   an empty parameter list. *)
+let test_mixed_match_with_params _ =
+  (* Single preceding parameter *)
+  let f1 prefix = function
+    | "literal" -> prefix ^ ":literal"
+    | {%mikmatch| digit+ |} -> prefix ^ ":number"
+    | {%mikmatch| alpha+ |} -> prefix ^ ":word"
+    | _ -> prefix ^ ":other"
+  in
+  assert_equal "tag:literal" (f1 "tag" "literal");
+  assert_equal "tag:number" (f1 "tag" "42");
+  assert_equal "tag:word" (f1 "tag" "hello");
+  assert_equal "tag:other" (f1 "tag" "!@#");
+
+  (* Multiple preceding parameters *)
+  let f2 a b c = function "" -> a + b + c | {%mikmatch| (digit+ as n : int) |} -> a + b + c + n | _ -> -1 in
+  assert_equal 6 (f2 1 2 3 "");
+  assert_equal 16 (f2 1 2 3 "10");
+  assert_equal (-1) (f2 1 2 3 "abc");
+
+  (* With captures and guards *)
+  let f3 multiplier = function
+    | "zero" -> 0
+    | {%mikmatch| (digit+ as n : int) |} when n > 100 -> multiplier * 100
+    | {%mikmatch| (digit+ as n : int) |} -> multiplier * n
+    | _ -> -1
+  in
+  assert_equal 0 (f3 2 "zero");
+  assert_equal 200 (f3 2 "999");
+  assert_equal 84 (f3 2 "42");
+  assert_equal (-1) (f3 2 "abc");
+
+  (* With optional parameter *)
+  let f4 ?(default = "none") = function {%mikmatch| alpha+ |} -> "word" | "" -> default | _ -> "other" in
+  assert_equal "word" (f4 "hello");
+  assert_equal "none" (f4 "");
+  assert_equal "fallback" (f4 ~default:"fallback" "");
+  assert_equal "other" (f4 "123")
+
 let suite =
   "mikmatch_tests"
   >::: [
@@ -678,6 +717,7 @@ let suite =
          "test_parse_ip1" >:: test_parse_ip1;
          "test_parse_ip2" >:: test_parse_ip2;
          "test_parse_logfile" >:: test_parse_logfile;
+         "test_mixed_match_with_params" >:: test_mixed_match_with_params;
        ]
 
 let () = run_test_tt_main suite
