@@ -241,26 +241,24 @@ let make_default_rhs ~target ~loc = function
   | default_cases ->
     let transformed =
       List.map
-        begin
-          fun case ->
-            match case.pc_lhs.ppat_desc with
-            | Ppat_var var ->
-              {
-                case with
-                pc_lhs = ppat_any ~loc;
-                pc_rhs =
-                  [%expr
-                    let [%p ppat_var ~loc var] = _ppx_mikmatch_v in
-                    [%e case.pc_rhs]];
-              }
-            | _ -> case
+        begin fun case ->
+          match case.pc_lhs.ppat_desc with
+          | Ppat_var var ->
+            {
+              case with
+              pc_lhs = ppat_any ~loc;
+              pc_rhs =
+                [%expr
+                  let [%p ppat_var ~loc var] = _ppx_mikmatch_v in
+                  [%e case.pc_rhs]];
+            }
+          | _ -> case
         end
         default_cases
     in
-    begin
-      match transformed with
-      | [ { pc_lhs = { ppat_desc = Ppat_any; _ }; pc_guard = None; pc_rhs; _ } ] -> pc_rhs
-      | _ -> pexp_match ~loc [%expr _ppx_mikmatch_v] transformed
+    begin match transformed with
+    | [ { pc_lhs = { ppat_desc = Ppat_any; _ }; pc_guard = None; pc_rhs; _ } ] -> pc_rhs
+    | _ -> pexp_match ~loc [%expr _ppx_mikmatch_v] transformed
     end
 
 let build_exec_match ~loc ~re_var ~continue_next ~on_match =
@@ -315,10 +313,9 @@ let transform_destructuring_let ~loc pattern_str expr =
     | bs_rev ->
       let exprs =
         List.map
-          begin
-            fun (_, iG, conv, _) ->
-              let group_idx = match iG with None -> 0 | Some i -> i + 1 in
-              apply_conv ~loc [%expr Re.Group.get _g [%e eint ~loc group_idx]] conv
+          begin fun (_, iG, conv, _) ->
+            let group_idx = match iG with None -> 0 | Some i -> i + 1 in
+            apply_conv ~loc [%expr Re.Group.get _g [%e eint ~loc group_idx]] conv
           end
           bs_rev
       in
@@ -432,8 +429,8 @@ let transform_cases ~loc cases =
 
     let handler_bindings =
       List.concat_map
-        begin
-          fun (_, _, handlers) -> List.map (fun (name, expr) -> value_binding ~loc ~pat:(ppat_var ~loc { txt = name; loc }) ~expr) handlers
+        begin fun (_, _, handlers) ->
+          List.map (fun (name, expr) -> value_binding ~loc ~pat:(ppat_var ~loc { txt = name; loc }) ~expr) handlers
         end
         processed_groups
     in
@@ -507,13 +504,13 @@ let transform_mixed_match ~loc ?matched_expr cases acc =
     let compilations =
       prepared_cases
       |> List.mapi (fun i case ->
-           match case with
-           | `Ext (re, _, _, _, _, flags) ->
-             let comp_var = Util.fresh_var () in
-             let comp_expr = Re_comp.compile_single ~loc re flags in
-             let binding = value_binding ~loc ~pat:(ppat_var ~loc { txt = comp_var; loc }) ~expr:comp_expr in
-             Some (i, comp_var, binding)
-           | _ -> None)
+        match case with
+        | `Ext (re, _, _, _, _, flags) ->
+          let comp_var = Util.fresh_var () in
+          let comp_expr = Re_comp.compile_single ~loc re flags in
+          let binding = value_binding ~loc ~pat:(ppat_var ~loc { txt = comp_var; loc }) ~expr:comp_expr in
+          Some (i, comp_var, binding)
+        | _ -> None)
       |> List.filter_map (fun x -> x)
     in
 
@@ -683,34 +680,32 @@ let transform_type ~loc rec_flag type_name pattern_str _td =
           | { txt = Seq es; _ } -> List.find_map find_capture es
           | _ -> None
         in
-        begin
-          match find_capture e with
-          | Some name ->
-            let field_access = pexp_field ~loc [%expr v] { txt = Lident name; loc } in
-            [%expr match [%e field_access] with None -> () | Some _ -> [%e build_pp_expr e]]
-          | None -> build_pp_expr e
+        begin match find_capture e with
+        | Some name ->
+          let field_access = pexp_field ~loc [%expr v] { txt = Lident name; loc } in
+          [%expr match [%e field_access] with None -> () | Some _ -> [%e build_pp_expr e]]
+        | None -> build_pp_expr e
         end
       | Repeat (range, e) ->
         let min_reps, max_reps_opt = range.txt in
-        begin
-          match max_reps_opt with
-          | Some max when min_reps <> max ->
-            (* try to determine actual count from context *)
-            [%expr
-              let count = [%e eint ~loc min_reps] in
-              for _ = 1 to count do
-                [%e build_pp_expr e]
-              done]
-          | _ ->
-            let rec repeat_n n expr =
-              if n <= 0 then [%expr ()]
-              else if n = 1 then expr
-              else
-                [%expr
-                  [%e expr];
-                  [%e repeat_n (n - 1) expr]]
-            in
-            repeat_n min_reps (build_pp_expr e)
+        begin match max_reps_opt with
+        | Some max when min_reps <> max ->
+          (* try to determine actual count from context *)
+          [%expr
+            let count = [%e eint ~loc min_reps] in
+            for _ = 1 to count do
+              [%e build_pp_expr e]
+            done]
+        | _ ->
+          let rec repeat_n n expr =
+            if n <= 0 then [%expr ()]
+            else if n = 1 then expr
+            else
+              [%expr
+                [%e expr];
+                [%e repeat_n (n - 1) expr]]
+          in
+          repeat_n min_reps (build_pp_expr e)
         end
       | _ -> [%expr ()]
     (* determine branch based on populated fields *)

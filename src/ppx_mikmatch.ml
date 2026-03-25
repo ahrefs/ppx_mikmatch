@@ -17,21 +17,21 @@
 open Ppxlib
 open Ast_builder.Default
 
+let pvar ~loc name = ppat_var ~loc { txt = name; loc }
+let evar ~loc name = pexp_ident ~loc { txt = Lident name; loc }
+
 let make_alias_binding ~loc ~var_name =
-  let warning_attr =
-    attribute ~loc ~name:{ txt = "warning"; loc } ~payload:(PStr [ { pstr_desc = Pstr_eval (estring ~loc "-32", []); pstr_loc = loc } ])
-  in
-  {
-    pvb_pat = ppat_var ~loc { txt = var_name; loc };
-    pvb_expr = pexp_ident ~loc { txt = Lident var_name; loc };
-    pvb_constraint = None;
-    pvb_attributes = [ warning_attr ];
-    pvb_loc = loc;
-  }
+  let pat = pvar ~loc var_name in
+  let expr = evar ~loc var_name in
+  match [%stri let[@warning "-32"] [%p pat] = [%e expr]] with { pstr_desc = Pstr_value (_, [ vb ]); _ } -> vb | _ -> assert false
+
+type binding_location =
+  | TopLevel
+  | InModule of string list (* module path *)
 
 let transformation =
   object (self)
-    inherit [value_binding list] Ast_traverse.fold_map as super
+    inherit [(binding_location * value_binding) list] Ast_traverse.fold_map as super
 
     method! structure_item item acc =
       match item.pstr_desc with
@@ -63,14 +63,14 @@ let transformation =
                   let type_name = td.ptype_name.txt in
                   let items, binding = Transformations.transform_type ~loc rec_flag type_name pattern_str td in
                   let alias = pstr_value ~loc Nonrecursive [ make_alias_binding ~loc ~var_name:type_name ] in
-                  (alias :: items_acc) @ items, binding :: bindings_acc
+                  (alias :: items_acc) @ items, (TopLevel, binding) :: bindings_acc
                 | _ -> items_acc, bindings_acc)
               ([], acc) type_decls
           in
 
           let wrapped = pstr_include ~loc:item.pstr_loc (include_infos ~loc:item.pstr_loc (pmod_structure ~loc:item.pstr_loc all_items)) in
           wrapped, all_bindings)
-      (* let%mikmatch x = {|some regex|}*)
+      (* let%mikmatch ... = {| ... |}*)
       | Pstr_extension (({ txt = "mikmatch"; _ }, PStr [ { pstr_desc = Pstr_value (rec_flag, vbs); _ } ]), _) ->
         let processed_vbs, collected_bindings =
           List.fold_left
@@ -80,11 +80,11 @@ let transformation =
               | Ppat_var { txt = var_name; _ }, Pexp_constant (Pconst_string (_, loc, _)) ->
                 let binding = Transformations.transform_let ~loc vb in
                 let alias = make_alias_binding ~loc ~var_name in
-                alias :: vbs_acc, binding :: bindings_acc
+                alias :: vbs_acc, (TopLevel, binding) :: bindings_acc
               (* destructuring - let%mikmatch {|/pattern/|} = expr *)
               | Ppat_constant (Pconst_string (pattern_str, _, _)), _ ->
                 let new_vb, new_bindings = Transformations.transform_destructuring_let ~loc:vb.pvb_loc pattern_str vb.pvb_expr in
-                new_vb :: vbs_acc, new_bindings @ bindings_acc
+                new_vb :: vbs_acc, List.map (fun b -> TopLevel, b) new_bindings @ bindings_acc
               | _ -> vbs_acc, bindings_acc
             end
             ([], acc) vbs
@@ -92,7 +92,9 @@ let transformation =
 
         let new_item = { item with pstr_desc = Pstr_value (rec_flag, List.rev processed_vbs) } in
         new_item, collected_bindings
-      (* let x = expression (which might contain %mik/%pcre) *)
+      (* let ... = expression (which might contain %mikmatch)
+         e.g. let ... = {%mikmatch| ... |}
+      *)
       | Pstr_value (rec_flag, vbs) ->
         let processed_vbs, collected_bindings =
           List.fold_left
@@ -105,7 +107,7 @@ let transformation =
                 let alias =
                   match vb.pvb_pat.ppat_desc with Ppat_var { txt = var_name; loc } -> make_alias_binding ~loc ~var_name | _ -> new_vb
                 in
-                alias :: vbs_acc, binding :: bindings_acc
+                alias :: vbs_acc, (TopLevel, binding) :: bindings_acc
               | _ ->
                 let new_expr, new_bindings = self#expression vb.pvb_expr bindings_acc in
                 let new_vb = { vb with pvb_expr = new_expr } in
@@ -114,6 +116,33 @@ let transformation =
         in
         let new_item = { item with pstr_desc = Pstr_value (rec_flag, List.rev processed_vbs) } in
         new_item, collected_bindings
+      (* module M = struct ... end which might contain %mikmatch defns *)
+      | Pstr_module { pmb_name = { txt = Some mod_name; _ } as name; pmb_expr; pmb_attributes; pmb_loc } -> begin
+        match pmb_expr.pmod_desc with
+        | Pmod_structure mod_items ->
+          let mod_items', mod_bindings = self#structure mod_items [] in
+          if mod_bindings = [] then super#structure_item item acc
+          else (
+            let tagged_bindings =
+              List.map
+                (fun (loc, vb) -> match loc with InModule path -> InModule (mod_name :: path), vb | TopLevel -> InModule [ mod_name ], vb)
+                mod_bindings
+            in
+
+            (* include the module from the prelude struct, then keep other original items *)
+            let include_item =
+              pstr_include ~loc:pmb_loc (include_infos ~loc:pmb_loc (pmod_ident ~loc:pmb_loc { txt = Lident mod_name; loc = pmb_loc }))
+            in
+            let new_items = include_item :: mod_items' in
+
+            let alias_module =
+              pstr_module ~loc:pmb_loc { pmb_name = name; pmb_expr = pmod_structure ~loc:pmb_loc new_items; pmb_attributes; pmb_loc }
+            in
+            alias_module, tagged_bindings @ acc)
+        | _ ->
+          (* other module types, no transformation needed *)
+          super#structure_item item acc
+      end
       | _ -> super#structure_item item acc
 
     method! expression e_ext acc =
@@ -130,13 +159,13 @@ let transformation =
         begin match e.pexp_desc with
         | Pexp_function ([], _, Pfunction_cases (cases, _, _)) ->
           let cases, binding = Transformations.transform_cases ~loc cases in
-          [%expr fun _ppx_mikmatch_v -> [%e cases]], binding @ acc
+          [%expr fun _ppx_mikmatch_v -> [%e cases]], List.map (fun b -> TopLevel, b) binding @ acc
         | Pexp_match (e, cases) ->
           let cases, binding = Transformations.transform_cases ~loc cases in
           ( [%expr
               let _ppx_mikmatch_v = [%e e] in
               [%e cases]],
-            binding @ acc )
+            List.map (fun b -> TopLevel, b) binding @ acc )
         | Pexp_let (rec_flag, vbs, body) ->
           let processed_vbs, new_bindings =
             List.fold_left
@@ -144,7 +173,7 @@ let transformation =
                 match vb.pvb_pat.ppat_desc, vb.pvb_expr.pexp_desc with
                 | Ppat_constant (Pconst_string (pattern_str, _, _)), _ ->
                   let new_vb, new_bindings = Transformations.transform_destructuring_let ~loc:vb.pvb_loc pattern_str vb.pvb_expr in
-                  new_vb :: vbs_acc, new_bindings @ bindings_acc
+                  new_vb :: vbs_acc, List.map (fun b -> TopLevel, b) new_bindings @ bindings_acc
                 | _ ->
                   Util.error ~loc
                     "[%%pcre] and [%%mikmatch] only apply to match, function, global let declarations of strings, and let destructuring.")
@@ -157,9 +186,13 @@ let transformation =
         end
       (* match smth with | {%mikmatch|some regex|} -> ...*)
       | Pexp_match (matched_expr, cases) when has_ext_case cases ->
-        Transformations.transform_mixed_match ~loc:e_ext.pexp_loc ~matched_expr cases acc
+        let plain_acc = List.map snd acc in
+        let expr, bindings = Transformations.transform_mixed_match ~loc:e_ext.pexp_loc ~matched_expr cases plain_acc in
+        expr, List.map (fun b -> TopLevel, b) bindings
       | Pexp_function (params, constraint_, Pfunction_cases (cases, _, _)) when has_ext_case cases ->
-        let transformed, acc = Transformations.transform_mixed_match ~loc:e_ext.pexp_loc cases acc in
+        let plain_acc = List.map snd acc in
+        let transformed, bindings = Transformations.transform_mixed_match ~loc:e_ext.pexp_loc cases plain_acc in
+        let acc = List.map (fun b -> TopLevel, b) bindings in
         begin match params with
         | [] -> transformed, acc
         | _ -> { e_ext with pexp_desc = Pexp_function (params, constraint_, Pfunction_body transformed) }, acc
@@ -187,14 +220,70 @@ let impl str =
   match rev_bindings with
   | [] -> str
   | _ -> begin
-    let loc = match List.hd (List.rev rev_bindings) with { pvb_loc; _ } -> pvb_loc in
-    let struct_items =
-      rev_bindings
-      |> List.rev
+    let loc = match List.hd (List.rev rev_bindings) with _, { pvb_loc; _ } -> pvb_loc in
+
+    let bindings = List.rev rev_bindings in
+    let top_level, in_modules = List.partition (fun (loc, _) -> loc = TopLevel) bindings in
+
+    (* group module bindings by module path *)
+    let module_groups =
+      in_modules
       |> List.fold_left
-           (fun acc binding -> acc @ [%str let[@warning "-32"] [%p binding.pvb_pat] = [%e binding.pvb_expr]])
-           [%str [%%i pstr_value ~loc Nonrecursive [ dispatch_function_binding ~loc ]]]
+           (fun acc (loc, vb) ->
+             match loc with
+             | InModule path ->
+               let existing = try List.assoc path acc with Not_found -> [] in
+               (path, vb :: existing) :: List.remove_assoc path acc
+             | TopLevel -> acc)
+           []
+      |> List.map (fun (path, bindings) -> path, List.rev bindings)
     in
+
+    let rec build_modules ~loc grouped_paths =
+      let by_root = Hashtbl.create 16 in
+      List.iter
+        begin fun (path, bindings) ->
+          match path with
+          | [] -> assert false
+          | root :: _ ->
+            let entries = try Hashtbl.find by_root root with Not_found -> [] in
+            Hashtbl.replace by_root root ((path, bindings) :: entries)
+        end
+        grouped_paths;
+
+      Hashtbl.fold
+        begin fun root_name entries acc ->
+          let direct, nested = List.partition (fun (path, _) -> List.length path = 1) entries in
+          let direct_bindings = List.concat_map snd direct in
+          let nested_paths = List.map (fun (path, bindings) -> List.tl path, bindings) nested in
+
+          let direct_items = List.concat_map (fun vb -> [%str let[@warning "-32"] [%p vb.pvb_pat] = [%e vb.pvb_expr]]) direct_bindings in
+          let nested_items = if nested_paths = [] then [] else build_modules ~loc nested_paths in
+
+          let mod_items = direct_items @ nested_items in
+          let mod_str =
+            pstr_module ~loc
+              { pmb_name = { txt = Some root_name; loc }; pmb_expr = pmod_structure ~loc mod_items; pmb_attributes = []; pmb_loc = loc }
+          in
+          mod_str :: acc
+        end
+        by_root []
+    in
+
+    let pattern_defs, compiled_res =
+      List.partition
+        (fun (_, vb) ->
+          match vb.pvb_pat.ppat_desc with Ppat_var { txt; _ } -> not (String.starts_with ~prefix:"_ppx_mikmatch_" txt) | _ -> true)
+        top_level
+    in
+
+    let struct_items =
+      [%str [%%i pstr_value ~loc Nonrecursive [ dispatch_function_binding ~loc ]]]
+      @ List.concat_map (fun (_, vb) -> [%str let[@warning "-32"] [%p vb.pvb_pat] = [%e vb.pvb_expr]]) pattern_defs
+      @ build_modules ~loc module_groups
+      @ List.concat_map (fun (_, vb) -> [%str let[@warning "-32"] [%p vb.pvb_pat] = [%e vb.pvb_expr]]) compiled_res
+    in
+
     let mod_expr = pmod_structure ~loc struct_items in
     [%str open [%m mod_expr]] @ str
   end

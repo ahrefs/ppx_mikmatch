@@ -88,6 +88,9 @@ let do_something = function%mikmatch
   | _ -> ...
 ```
 
+> [!WARNING]
+> Top-level pattern definitions cannot reference patterns defined inside modules (e.g., `let%mikmatch alias = {| M.pattern |}`) due to a limitation of collecting and placing all patterns in the top of the file (we would need dependency analysis to order them correctly). Instead, use module patterns directly in match expressions: `{| M.pattern |}`.
+
 ### Variable capture
 ```ocaml
 let%mikmatch num = {| digit+ |}

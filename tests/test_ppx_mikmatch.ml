@@ -224,6 +224,12 @@ let test_character_sets _ =
   assert_equal "hex" (match_hex "123ABC");
   assert_equal "not hex" (match_hex "xyz");
 
+  (* hex lower from module inside the other file *)
+  let match_hex_lower = function%mikmatch {| Test_ppx_mikmatch_module.M.hex_lower+ |} -> "hex" | _ -> "not hex" in
+  assert_equal "hex" (match_hex_lower "deadbeef");
+  assert_equal "hex" (match_hex_lower "123abc");
+  assert_equal "not hex" (match_hex_lower "xyz");
+
   (* Negative character class *)
   let match_not_digit = function%mikmatch {| [^'0'-'9']+ |} -> "no digits" | _ -> "has digits" in
   assert_equal "no digits" (match_not_digit "abc");
@@ -408,7 +414,7 @@ let test_mixed_matching _ =
 
   assert_equal "got a" (no_default_case "a");
   assert_equal "got b" (no_default_case "b");
-  assert_raises (Failure "File tests/test_ppx_mikmatch.ml, lines 403-405, characters 24-33: String did not match any mikmatch cases.")
+  assert_raises (Failure "File tests/test_ppx_mikmatch.ml, lines 409-411, characters 24-33: String did not match any mikmatch cases.")
     (fun () -> no_default_case "c")
 
 type mode =
