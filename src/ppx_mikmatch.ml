@@ -19,6 +19,8 @@ open Ast_builder.Default
 
 let pvar ~loc name = ppat_var ~loc { txt = name; loc }
 let evar ~loc name = pexp_ident ~loc { txt = Lident name; loc }
+let rec list_take n = function [] -> [] | x :: xs -> if n <= 0 then [] else x :: list_take (n - 1) xs
+let list_is_empty = function [] -> true | _ -> false
 
 let make_alias_binding ~loc ~var_name =
   let pat = pvar ~loc var_name in
@@ -129,11 +131,11 @@ let transformation =
                 mod_bindings
             in
 
-            (* include the module from the prelude struct, then keep other original items *)
+            (* include the module from the prelude struct, but only if we tagged bingings, then keep other original items *)
             let include_item =
               pstr_include ~loc:pmb_loc (include_infos ~loc:pmb_loc (pmod_ident ~loc:pmb_loc { txt = Lident mod_name; loc = pmb_loc }))
             in
-            let new_items = include_item :: mod_items' in
+            let new_items = if list_is_empty tagged_bindings then mod_items' else include_item :: mod_items' in
 
             let alias_module =
               pstr_module ~loc:pmb_loc { pmb_name = name; pmb_expr = pmod_structure ~loc:pmb_loc new_items; pmb_attributes; pmb_loc }
@@ -223,66 +225,85 @@ let impl str =
     let loc = match List.hd (List.rev rev_bindings) with _, { pvb_loc; _ } -> pvb_loc in
 
     let bindings = List.rev rev_bindings in
-    let top_level, in_modules = List.partition (fun (loc, _) -> loc = TopLevel) bindings in
 
-    (* group module bindings by module path *)
-    let module_groups =
-      in_modules
-      |> List.fold_left
-           (fun acc (loc, vb) ->
-             match loc with
-             | InModule path ->
-               let existing = try List.assoc path acc with Not_found -> [] in
-               (path, vb :: existing) :: List.remove_assoc path acc
-             | TopLevel -> acc)
-           []
-      |> List.map (fun (path, bindings) -> path, List.rev bindings)
-    in
-
-    let rec build_modules ~loc grouped_paths =
-      let by_root = Hashtbl.create 16 in
-      List.iter
-        begin fun (path, bindings) ->
-          match path with
-          | [] -> assert false
-          | root :: _ ->
-            let entries = try Hashtbl.find by_root root with Not_found -> [] in
-            Hashtbl.replace by_root root ((path, bindings) :: entries)
-        end
-        grouped_paths;
-
-      Hashtbl.fold
-        begin fun root_name entries acc ->
-          let direct, nested = List.partition (fun (path, _) -> List.length path = 1) entries in
-          let direct_bindings = List.concat_map snd direct in
-          let nested_paths = List.map (fun (path, bindings) -> List.tl path, bindings) nested in
-
-          let direct_items = List.concat_map (fun vb -> [%str let[@warning "-32"] [%p vb.pvb_pat] = [%e vb.pvb_expr]]) direct_bindings in
-          let nested_items = if nested_paths = [] then [] else build_modules ~loc nested_paths in
-
-          let mod_items = direct_items @ nested_items in
-          let mod_str =
-            pstr_module ~loc
-              { pmb_name = { txt = Some root_name; loc }; pmb_expr = pmod_structure ~loc mod_items; pmb_attributes = []; pmb_loc = loc }
+    (* process all bindings in source order, build modules as needed *)
+    let rec emit_in_order remaining =
+      match remaining with
+      | [] -> []
+      | (TopLevel, vb) :: rest ->
+        (* emit top-level binding immediately *)
+        let items = [%str let[@warning "-32"] [%p vb.pvb_pat] = [%e vb.pvb_expr]] in
+        items @ emit_in_order rest
+      | (InModule path, vb) :: rest ->
+        let root = List.hd path in
+        (* collect all consecutive bindings for this root module *)
+        let same_root, different =
+          let rec collect acc = function
+            | ((InModule p, _) as b) :: rest when List.hd p = root -> collect (b :: acc) rest
+            | rest -> List.rev acc, rest
           in
-          mod_str :: acc
+          collect [ InModule path, vb ] rest
+        in
+        let mod_items = build_module_tree ~loc root same_root in
+        mod_items @ emit_in_order different
+    and build_module_tree ~loc root module_bindings =
+      let by_path = Hashtbl.create 16 in
+      List.iter
+        begin fun binding ->
+          match binding with
+          | InModule path, vb ->
+            let existing = try Hashtbl.find by_path path with Not_found -> [] in
+            Hashtbl.replace by_path path (vb :: existing)
+          | TopLevel, _ -> assert false
         end
-        by_root []
+        module_bindings;
+
+      let rec build_at_path current_path =
+        let direct_bindings = try Hashtbl.find by_path current_path |> List.rev with Not_found -> [] in
+        let direct_items = List.concat_map (fun vb -> [%str let[@warning "-32"] [%p vb.pvb_pat] = [%e vb.pvb_expr]]) direct_bindings in
+
+        let child_modules =
+          Hashtbl.fold
+            begin fun path _ acc ->
+              if
+                List.length path = List.length current_path + 1
+                && List.for_all2 ( = ) current_path (list_take (List.length current_path) path)
+              then List.nth path (List.length current_path) :: acc
+              else acc
+            end
+            by_path []
+          |> List.sort_uniq compare
+        in
+
+        (* build nested modules *)
+        let nested_items =
+          List.concat_map
+            (fun child_name ->
+              let child_path = current_path @ [ child_name ] in
+              let child_items = build_at_path child_path in
+              [
+                pstr_module ~loc
+                  {
+                    pmb_name = { txt = Some child_name; loc };
+                    pmb_expr = pmod_structure ~loc child_items;
+                    pmb_attributes = [];
+                    pmb_loc = loc;
+                  };
+              ])
+            child_modules
+        in
+
+        direct_items @ nested_items
+      in
+
+      let mod_body = build_at_path [ root ] in
+      [
+        pstr_module ~loc
+          { pmb_name = { txt = Some root; loc }; pmb_expr = pmod_structure ~loc mod_body; pmb_attributes = []; pmb_loc = loc };
+      ]
     in
 
-    let pattern_defs, compiled_res =
-      List.partition
-        (fun (_, vb) ->
-          match vb.pvb_pat.ppat_desc with Ppat_var { txt; _ } -> not (String.starts_with ~prefix:"_ppx_mikmatch_" txt) | _ -> true)
-        top_level
-    in
-
-    let struct_items =
-      [%str [%%i pstr_value ~loc Nonrecursive [ dispatch_function_binding ~loc ]]]
-      @ List.concat_map (fun (_, vb) -> [%str let[@warning "-32"] [%p vb.pvb_pat] = [%e vb.pvb_expr]]) pattern_defs
-      @ build_modules ~loc module_groups
-      @ List.concat_map (fun (_, vb) -> [%str let[@warning "-32"] [%p vb.pvb_pat] = [%e vb.pvb_expr]]) compiled_res
-    in
+    let struct_items = [%str [%%i pstr_value ~loc Nonrecursive [ dispatch_function_binding ~loc ]]] @ emit_in_order bindings in
 
     let mod_expr = pmod_structure ~loc struct_items in
     [%str open [%m mod_expr]] @ str
