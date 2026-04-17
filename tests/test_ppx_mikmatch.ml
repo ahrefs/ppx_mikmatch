@@ -208,7 +208,14 @@ let test_control_sequences _ =
   let match_any = function%mikmatch {| any any any |} -> "three chars" | _ -> "not three" in
   assert_equal "three chars" (match_any "abc");
   assert_equal "three chars" (match_any "123");
-  assert_equal "not three" (match_any "ab")
+  assert_equal "not three" (match_any "ab");
+
+  let extract_error = function%mikmatch
+    | {|/ bol (digit+ '-' digit+ '-' digit+ as date) ' '+ "ERROR:" ' '* (any+ as msg) eol / u|} -> Some (date, msg)
+    | _ -> None
+  in
+  let log = "2024-01-01 INFO: started\n2024-01-02 ERROR: failed\n2024-01-03 INFO: recovered" in
+  assert_equal (Some ("2024-01-02", "failed")) (extract_error log)
 
 (* Test character sets *)
 let test_character_sets _ =
@@ -414,7 +421,7 @@ let test_mixed_matching _ =
 
   assert_equal "got a" (no_default_case "a");
   assert_equal "got b" (no_default_case "b");
-  assert_raises (Failure "File tests/test_ppx_mikmatch.ml, lines 409-411, characters 24-33: String did not match any mikmatch cases.")
+  assert_raises (Failure "File tests/test_ppx_mikmatch.ml, lines 416-418, characters 24-33: String did not match any mikmatch cases.")
     (fun () -> no_default_case "c")
 
 type mode =

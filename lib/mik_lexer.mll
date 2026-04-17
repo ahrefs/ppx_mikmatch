@@ -23,6 +23,7 @@ let predefined_classes = [
   ("eol", {|$|[\n]|});
   ("bnd", {|\b|});
   ("bos", {|^|});
+  ("bol", {|^|[\n]|});
   ("any", {|[^\n]|});
 ]
 

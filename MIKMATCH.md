@@ -69,7 +69,7 @@ The grammar accepted by this extensions is the following
 
 Where `PREDEFINED_CLASS` is one of:
   - **POSIX character classes:** `lower`, `upper`, `alpha`, `digit`, `alnum`, `punct`, `graph`, `print`, `blank`, `space`, `cntrl`, `xdigit`
-  - **Control sequences:** `eos` (same as `$`), `eol` (end of string or newline), `bnd` (word boundary `\b`), `bos` (same as `^`), `any` (any character except newline)
+  - **Control sequences:** `eos` (same as `$`), `eol` (end of string or newline), `bnd` (word boundary `\b`), `bos` (same as `^`), `bol` (beginning of string or after newline), `any` (any character except newline)
   - **Empty string:** `""`, equivalent to `^$` (or `bos eos`)
 
 ## Semantics and Examples
