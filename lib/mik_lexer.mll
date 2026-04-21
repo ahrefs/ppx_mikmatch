@@ -24,7 +24,7 @@ let predefined_classes = [
   ("bnd", {|\b|});
   ("bos", {|^|});
   ("bol", {|^|[\n]|});
-  ("any", {|[\s\S]|});
+  ("any", {|[^]|});
   ("notnl", {|[^\n]|});
 ]
 
