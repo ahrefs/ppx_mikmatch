@@ -59,7 +59,7 @@ function%mikmatch {| "hello" |} -> "matched"
 function%mikmatch {|/ "hello" / u|} -> "matched" (* matches "hello world" *)
 ```
 
-## Built-in Keywords
+## Built-ins
 
 Available in patterns:
 
@@ -74,7 +74,17 @@ Available in patterns:
 - `notnl` - any character except newline
 - `any` - any character (including newline)
 
-**Repetition:** `*`, `+`, `?`, `{n}`, `{n-m}`, `{n-}`
+**Operators**:
+  - **Repetition:** `*`, `+`, `?`, `{n}`, `{n-m}`, `{n-}`
+  - **Caseless matching**: `~`
+
+**Capturing** (`p` is either a pattern or an identifier for one):
+  - **Unnamed**: `(p)`
+  - **Named**: `(p as name)`
+  - **Casting**: `(p as name : type)`
+    - where `type` can be `int`, `float`, or any arbitrary type `<type>` with a parsing function `parse_<type>` available in scope
+  - **Piping**: `(p as name := func)`
+    - pipes match of `p` into `func` and names the result `name`
 
 **Flags:** `i` (case-insensitive), `u` (unanchored)
 

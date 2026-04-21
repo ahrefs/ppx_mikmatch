@@ -4,7 +4,7 @@
 Accepts `mikmatch` syntax, along with some nice to haves.
 
 ## Grammar
-The grammar accepted by this extensions is the following
+The grammar accepted by this extension is the following
 
 ```bnf
 <main_match_case> ::= <pattern> EOF
@@ -29,6 +29,7 @@ The grammar accepted by this extensions is the following
               | <basic_atom> "?"
               | <basic_atom> "~"                         # caseless matching
               | <basic_atom> "{" INT (n) "}"             # match n times
+              | <basic_atom> "{" INT (n) "-" "}"         # match at least n times
               | <basic_atom> "{" INT (n) "-" INT (m) "}" # match at least n times, at most m times
 
 <basic_atom> ::= CHAR_LITERAL
@@ -37,39 +38,54 @@ The grammar accepted by this extensions is the following
                | "_"
                | "^"
                | PREDEFINED_CLASS
-               | IDENT
+               | <ident>
                | "[" <char_set> "]"     # character class
                | "[" "^" <char_set> "]" # negative character class
                | "(" <pattern> ")"
-               | "(" IDENT ")"
-               | "(" IDENT "as" IDENT ")"
-               | "(" IDENT "as" IDENT ":" <type_name> ")"
-               | "(" IDENT "as" IDENT ":=" <func_name> ")"
+               | "(" <ident> ")"
+               | "(" <ident> ":" <type_name> ")"
+               | "(" <ident> ":=" <func_name> ")"
+               | "(" <ident> ":=" <func_name> ":" <type_name> ")"
+               | "(" <ident> "as" IDENT ")"
+               | "(" <ident> "as" IDENT ":" <type_name> ")"
+               | "(" <ident> "as" IDENT ":=" <func_name> ")"
+               | "(" <ident> "as" IDENT ":=" <func_name> ":" <type_name> ")"
                | "(" <pattern> "as" IDENT ")"
                | "(" <pattern> "as" IDENT ":" <type_name> ")"
                | "(" <pattern> "as" IDENT ":=" <func_name> ")"
                | "(" <pattern> "as" IDENT ":=" <func_name> ":" <type_name> ")"
 
+<ident> ::= IDENT
+          | MOD_IDENT # qualified module names (e.g., Module.Pattern.name)
+
 <type_name> ::= "int"
               | "float"
-              | IDENT # other arbitrary types not built-in, requires parse function
+              | <ident> # other arbitrary types not built-in, requires parse function
 
-<func_name> ::= IDENT
-              | MOD_IDENT # qualified names
+<func_name> ::= <ident>
 
 <char_set> ::= <char_set_item>
              | <char_set_item> <char_set>
 
 <char_set_item> ::= CHAR_LITERAL
-                  | CHAR_LITERAL "-" CHAR_LITERAL
+                  | CHAR_LITERAL "-" CHAR_LITERAL  # character range
                   | STRING_LITERAL
+                  | INT                            # bare integer
                   | PREDEFINED_CLASS
                   | IDENT
+                  | IDENT "-" IDENT                # single-char identifier range
 ```
 
 Where `PREDEFINED_CLASS` is one of:
   - **POSIX character classes:** `lower`, `upper`, `alpha`, `digit`, `alnum`, `punct`, `graph`, `print`, `blank`, `space`, `cntrl`, `xdigit`
-  - **Control sequences:** `eos` (same as `$`), `eol` (end of string or newline), `bnd` (word boundary `\b`), `bos` (same as `^`), `bol` (beginning of string or after newline), `any` (any character except newline)
+  - **Control sequences:**
+    - `bos` - beginning of string (same as `^`)
+    - `eos` - end of string (same as `$`)
+    - `bol` - beginning of line (beginning of string or after newline: `^|[\n]`)
+    - `eol` - end of line (end of string or newline: `$|[\n]`)
+    - `bnd` - word boundary (`\b`)
+    - `notnl` - any character except newline (`[^\n]`)
+    - `any` - any character including newlines (`[\s\S]`)
   - **Empty string:** `""`, equivalent to `^$` (or `bos eos`)
 
 ## Semantics and Examples
