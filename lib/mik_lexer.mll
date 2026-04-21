@@ -33,9 +33,6 @@ let escape_char = function
   | 't' -> '\t'
   | 'r' -> '\r'
   | 'b' -> '\b'
-  | '\\' -> '\\'
-  | '\'' -> '\''
-  | '"' -> '"'
   | c -> c
 
 let escape_special = function
