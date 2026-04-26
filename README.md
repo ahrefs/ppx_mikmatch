@@ -63,7 +63,7 @@ function%mikmatch {|/ "hello" / u|} -> "matched" (* matches "hello world" *)
 
 Available in patterns:
 
-**POSIX character classes:** `lower`, `upper`, `alpha`, `digit`, `alnum`, `punct`, `graph`, `print`, `blank`, `space`, `cntrl`, `xdigit`
+**POSIX character classes:** `lower`, `upper`, `alpha`, `digit`, `alnum`, `punct`, `graph`, `print`, `blank`, `space`, `cntrl`, `xdigit` (7-bit ASCII, i.e. POSIX locale)
 
 **Control sequences:**
 - `bos` - beginning of string (`^`)

@@ -8,6 +8,27 @@ let test_basic_matching _ =
   assert_equal "matched hello" (match_hello "hello");
   assert_equal "no match" (match_hello "world");
 
+  let match_lower = function%mikmatch {| lower |} -> "lower" | _ -> "not lower" in
+  assert_equal "lower" (match_lower "a");
+  assert_equal "not lower" (match_lower "A");
+  assert_equal "not lower" (match_lower "\xb5");
+
+  let match_cntrl = function%mikmatch {| cntrl |} -> "control character" | _ -> "not a control character" in
+  assert_equal "control character" (match_cntrl "\x00");
+  assert_equal "control character" (match_cntrl "\x01");
+  assert_equal "control character" (match_cntrl "\t");
+  assert_equal "control character" (match_cntrl "\n");
+  assert_equal "control character" (match_cntrl "\x1f");
+  assert_equal "control character" (match_cntrl "\x7f");
+  assert_equal "not a control character" (match_cntrl "");
+  assert_equal "not a control character" (match_cntrl "\x00\x00");
+  assert_equal "not a control character" (match_cntrl " ");
+  assert_equal "not a control character" (match_cntrl "~");
+  assert_equal "not a control character" (match_cntrl "\x80");
+  assert_equal "not a control character" (match_cntrl "\x81");
+  assert_equal "not a control character" (match_cntrl "\x9f");
+  assert_equal "not a control character" (match_cntrl "\xff");
+
   let match_digit = function%mikmatch {| digit |} -> "single digit" | _ -> "not a digit" in
   assert_equal "single digit" (match_digit "5");
   assert_equal "not a digit" (match_digit "a");
@@ -422,7 +443,7 @@ let test_mixed_matching _ =
 
   assert_equal "got a" (no_default_case "a");
   assert_equal "got b" (no_default_case "b");
-  assert_raises (Failure "File tests/test_ppx_mikmatch.ml, lines 417-419, characters 24-33: String did not match any mikmatch cases.")
+  assert_raises (Failure "File tests/test_ppx_mikmatch.ml, lines 438-440, characters 24-33: String did not match any mikmatch cases.")
     (fun () -> no_default_case "c")
 
 type mode =

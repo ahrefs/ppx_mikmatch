@@ -6,19 +6,19 @@ let new_line lexbuf =
   Lexing.new_line lexbuf
 
 let predefined_classes = [
-  ("lower", {|[[:lower:]]|});
-  ("upper", {|[[:upper:]]|});
-  ("alpha", {|[[:alpha:]]|});
-  ("digit", {|[[:digit:]]|});
-  ("alnum", {|[[:alnum:]]|});
-  ("punct", {|[[:punct:]]|});
-  ("graph", {|[[:graph:]]|});
-  ("print", {|[[:print:]]|});
-  ("blank", {|[[:blank:]]|});
-  ("cntrl", {|[[:cntrl:]]|});
-  ("xdigit", {|[[:xdigit:]]|});
-  ("space", {|[[:space:]]|});
-  (* ("word", {|[[:word:]]|}); *)
+  ("lower", {|[a-z]|});
+  ("upper", {|[A-Z]|});
+  ("alpha", {|[A-Za-z]|});
+  ("digit", {|[0-9]|});
+  ("alnum", {|[0-9A-Za-z]|});
+  ("punct", {|[!-/:-@[-`{-~]|});
+  ("graph", {|[!-~]|});
+  ("print", {|[ -~]|});
+  ("blank", {|[\t ]|});
+  ("cntrl", "[\x00-\x1f\x7f]");
+  ("xdigit", {|[0-9A-Fa-f]]|});
+  ("space", {|[\t-\r ]|});
+  (* ("word", {|[0-9A-Za-z_]|}); *)
   ("eos", {|$|});
   ("eol", {|$|[\n]|});
   ("bnd", {|\b|});
